@@ -207,9 +207,47 @@ public class ApacheFTP {
 		
 		/** 对远程目录的处理 */
 		String remoteFileName = remote;
+		//create directory
 		if(remoteFileName.contains("/")){
 			remoteFileName = remote.substring(remote.lastIndexOf("/") + 1);
-			//
+			//创建服务器远程目录结构，创建失败直接返回
+			if(CreateDirectory(remote,ftpClient)){
+				return "上传文件过程中，创建目录结构失败";
+			}
+		}//end  create directory
+		
+		boolean status = false;
+		//检查远程是否存在文件
+		FTPFile[] files = ftpClient.listFiles(new String(remoteFileName.getBytes("GBK"),"iso-8859-1"));
+		if(files.length == 1){//文件已存在
+			long remoteSize = files[0].getSize();
+			File f = new File(local);
+			//本地文件大小
+			long localSize = f.length();
+			if(remoteSize == localSize){
+				result = "文件已存在";
+			}else if(remoteSize > localSize){
+				result = "服务器文件大于本地文件";
+			}
+			
+			
+			status = uploadFile(remoteFileName,f,ftpClient,remoteSize);
+			
+			//如果断点续传没有成功，则删除服务器上文件，重新上传
+			if(!status){
+				if(!ftpClient.deleteFile(remoteFileName)){
+					result = "断点续传不成功后，文件删除失败";
+				}
+				//重新上传
+				status = uploadFile(remoteFileName, f, ftpClient, 0);
+			}
+		}else{//文件不存在
+			status = uploadFile(remoteFileName, new File(local), ftpClient, 0);
+		}
+		if(status){
+			result = "文件上传成功";
+		}else{
+			result = "文件上传失败";
 		}
 		return result;
 	}
@@ -225,12 +263,95 @@ public class ApacheFTP {
 		boolean status = true;
 		//远程服务器文件路径
 		String directory = remote.substring(0,remote.lastIndexOf("/") + 1);
+		//如果远程目录不存在，则滴管创建远程服务器目录
 		if(!directory.equalsIgnoreCase("/") && !ftpClient.changeWorkingDirectory(new String(directory.getBytes("GBK"),"iso-8859-1"))){
-			
-		}
+			int start = 0;
+			int end = 0;
+			if(directory.startsWith("/")){
+				start = 1;
+			}else{
+				start = 0;
+			}
+			end = directory.indexOf("/",start);
+			while(true){
+				//子目录名称
+				String subDirectory = new String(remote.substring(start,end).getBytes("GBK"),"iso-8859-1");
+				if(!ftpClient.changeWorkingDirectory(subDirectory)){
+					//创建目录
+					if(ftpClient.makeDirectory(subDirectory)){
+						ftpClient.changeWorkingDirectory(subDirectory);
+					}else{
+						System.out.println("创建目录失败");
+						return false;
+					}
+				}
+				
+				start = end + 1;
+				end = directory.indexOf("/",start);
+				
+				//检查所有目录是否创建完毕
+				if(end <= start){
+					break;
+				}
+			}
+		}//end while
 		return status;
 	}
 	
+	/**
+	 * 上传文件到服务器，新上传和断点续传
+	 * @param remoteFile 远程文件名，在上传之前已经将服务器工作目录做了改变
+	 * @param localFile 本地文件File句柄，绝对路径
+	 * @param ftpClient FTPClient引用
+	 * @param remoteSize 远程文件大小
+	 * @return 文件上传状态，成功true，失败false
+	 * @param IOException
+	 * */
+	public boolean uploadFile(String remoteFile,File localFile,FTPClient ftpClient,long remoteSize) throws IOException{
+		boolean status;
+		//文件上传进度计数单位
+		long step = localFile.length() / 100;
+		//上传进度
+		long process = 0;
+		long localreadybytes = 0L;
+		//读取本地文件
+		RandomAccessFile raf = new RandomAccessFile(localFile,"r");
+		OutputStream out = ftpClient.appendFileStream(new String(remoteFile.getBytes("GBK"),"iso-8859-1"));
+		
+		//断点续传
+		if(remoteSize >0){
+			ftpClient.setRestartOffset(remoteSize);
+			process =remoteSize / step;
+			//访问文件记录
+			raf.seek(remoteSize);
+			localreadybytes = remoteSize;
+		}
+		
+		byte[] bytes = new byte[1];
+		int c;
+		
+		//上传
+		while((c = raf.read(bytes)) != -1){
+			out.write(bytes,0,c);
+			localreadybytes += c;
+			long nowProcess = localreadybytes / step;
+			if(nowProcess != process){
+				process = nowProcess;
+				System.out.println("上传进度：" + process);
+			}
+		}//end uploadfile
+		out.flush();
+		raf.close();
+		out.close();
+		boolean result = ftpClient.completePendingCommand();
+		if(result){
+			status = true;
+		}else{
+			status = false;
+		}
+		
+		return status;
+	}
 	/**
 	 * 主函数
 	 * */
@@ -239,7 +360,8 @@ public class ApacheFTP {
 		try{
 			System.err.println(myFtp.connect("127.0.0.1", 990, "ftptest", "123456"));
 //			myFtp.connect("127.0.0.1", 990, "ftptest", "123456");
-			System.out.println(myFtp.downLoad("./HA-FileZillaServer.rar","F:/text/HA-FileZillaServer.rar"));
+//			System.out.println(myFtp.downLoad("./HA-FileZillaServer.rar","F:/text/HA-FileZillaServer.rar"));
+			System.out.println(myFtp.upload("f:/text/1/sss.txt", "/1/sss.txt"));
 			System.exit(0);
 //			myFtp.disconnect();
 		}catch(IOException e){
