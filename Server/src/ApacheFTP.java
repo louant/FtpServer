@@ -25,6 +25,7 @@ public class ApacheFTP {
 	public FTPSClient ftpClient = new FTPSClient(true);
 	//public FTPClent ftpClient = new FTPClient();//不带证书验证的FTP连接对象
 	
+	private String localFileFullName = "";//需要上传的目录
 	
 	/**
 	 * 构造函数
@@ -47,6 +48,7 @@ public class ApacheFTP {
 	 * */
 	public boolean connect(String hostname,int port,String username,String password) throws IOException{
 		ftpClient.connect(hostname.trim(),port);
+		ftpClient.setBufferSize(1024*1024*100);//设置FTP缓冲区 100M
 		ftpClient.setControlEncoding("GBK");
 		ftpClient.setDataTimeout(10000); //设置传输超时时间10秒
 		ftpClient.setConnectTimeout(10000); //设置连接超时10秒
@@ -211,7 +213,7 @@ public class ApacheFTP {
 		if(remoteFileName.contains("/")){
 			remoteFileName = remote.substring(remote.lastIndexOf("/") + 1);
 			//创建服务器远程目录结构，创建失败直接返回
-			if(CreateDirectory(remote,ftpClient)){
+			if(!CreateDirectory(remote,ftpClient)){
 				return "上传文件过程中，创建目录结构失败";
 			}
 		}//end  create directory
@@ -253,6 +255,69 @@ public class ApacheFTP {
 	}
 	
 	/**
+	 * 上传整个文件夹到服务器，支持断点续传
+	 * @param localFileFullName 本地文件夹名称，绝对路径
+	 * @param remote 上传路径
+	 * @return 上传结果
+	 * @throws IOException
+	 * */
+	public String uploadDirectory(String localFileFullName,String remote) throws IOException{
+		this.localFileFullName = localFileFullName;
+		try{
+			String saveFileName = new String(localFileFullName.getBytes("GBK"),"iso-8859-1");
+			
+			//打开本地待传文件
+			File file_in = new File(saveFileName);
+			boolean status = processFile(file_in,remote,ftpClient);
+			if(status){
+				return "上传成功";
+			}else{
+				return "上传失败";
+			}
+		}catch(Exception e){
+			e.printStackTrace();
+			return "上传失败";
+		}
+	} 
+	
+	/**
+	 * 上传单个文件
+	 * @param 待上传文件
+	 * @param ftpClient FTPClient对象
+	 * @param remote 上传路径
+	 * @param return 返回结果，成功true，失败false
+	 * @throws IOException
+	 * */
+	public boolean processFile(File source,String remote, FTPClient ftpClient) throws IOException{
+		
+		if(source.exists()){//检查上传文件是否存在
+			if(source.isDirectory()){//检查是否为文件夹
+				String path = source.getPath().substring(localFileFullName.length()).replace("\\", "/");
+				if(!isDirExist(path,ftpClient)){//判断是否存在文件夹，不存在则创建
+					CreateDirectory(path,ftpClient);
+				}
+				
+				File sourceFile[] = source.listFiles();
+				for(int i = 0; i < sourceFile.length; i++){
+					if(sourceFile[i].exists()){
+						if(sourceFile[i].isDirectory()){
+							this.processFile(sourceFile[i], remote, ftpClient);
+						}else{
+//							ftpClient.changeWorkingDirectory(cheanPath(sourceFile[i].getPath()));
+							
+						}
+					}
+				}
+			}else{
+				
+			}
+		}else{
+			
+		}
+		return false;
+	}
+	
+	/**
 	 * 递归创建远程服务器目录
 	 * @param remote 远程服务器文件绝对路径
 	 * @param ftpClient FTPClient对象
@@ -279,7 +344,7 @@ public class ApacheFTP {
 				if(!ftpClient.changeWorkingDirectory(subDirectory)){
 					//创建目录
 					if(ftpClient.makeDirectory(subDirectory)){
-						ftpClient.changeWorkingDirectory(subDirectory);
+						ftpClient.changeWorkingDirectory(subDirectory);//跳转到指定文件夹
 					}else{
 						System.out.println("创建目录失败");
 						return false;
@@ -298,6 +363,37 @@ public class ApacheFTP {
 		return status;
 	}
 	
+	/**
+	 * 获取当前的FTP路径
+	 * @param path 当前本地路径
+	 * @return 返回当前的FTP路径
+	 * */
+	private String cheangPath(String path){
+		path = path.substring(localFileFullName.length()).replace("\\", "/");
+		if("".equals(path)){
+			path = "/";
+		}else{
+			path = path.substring(0, path.lastIndexOf("/")+1);
+		}
+		
+		return path;
+	}
+	/**
+	 * 检查是否存在文件夹
+	 * @param dir 文件夹路径
+	 * @param ftpClient FTPClient对象
+	 * @return 返回结果，存在true，不存在false
+	 * */
+	private boolean isDirExist(String dir, FTPClient ftpClient){
+		try{
+			ftpClient.cwd(dir);
+		}catch(Exception e){
+			//不存在文件夹 
+			return false;
+		}
+		
+		return true;
+	}
 	/**
 	 * 上传文件到服务器，新上传和断点续传
 	 * @param remoteFile 远程文件名，在上传之前已经将服务器工作目录做了改变
