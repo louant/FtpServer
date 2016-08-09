@@ -53,8 +53,9 @@ public class ApacheFTP {
 		ftpClient.setDataTimeout(10000); //设置传输超时时间10秒
 		ftpClient.setConnectTimeout(10000); //设置连接超时10秒
 		
+		/** 接收FTPClient状态码 返回2**则登录成功*/
 		int reply = ftpClient.getReplyCode();
-		
+		/** 返回2开头的状态码 则为真*/
 		if(FTPReply.isPositiveCompletion(reply)){
 			boolean loginResult = ftpClient.login(username, password);
 			int retrunCode = ftpClient.getReplyCode();
@@ -390,8 +391,7 @@ public class ApacheFTP {
 		}catch(Exception e){
 			//不存在文件夹 
 			return false;
-		}
-		
+		}		
 		return true;
 	}
 	/**

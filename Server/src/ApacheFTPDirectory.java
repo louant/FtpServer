@@ -47,7 +47,7 @@ public class ApacheFTPDirectory {
 	 * */
 	public  boolean connect(String hostname,int port,String username,String password) throws IOException{
 		ftpClient.connect(hostname.trim(),port);
-		ftpClient.setBufferSize(1024*1024*100);//设置FTP缓冲区 100M
+		ftpClient.setBufferSize(1024);//设置FTP缓冲区 100M
 		ftpClient.setControlEncoding("GBK");
 		ftpClient.setDataTimeout(10000); //设置传输超时时间10秒
 		ftpClient.setConnectTimeout(10000); //设置连接超时10秒
@@ -224,11 +224,12 @@ public class ApacheFTPDirectory {
 			localreadybytes = remoteSize;
 		}
 		
-		byte[] bytes = new byte[1];
+		byte[] bytes = new byte[1024];
 		int c;
 		
 		//上传
 		while((c = raf.read(bytes)) != -1){
+			//将指定 byte 数组中从偏移量 0 开始的 c 个字节写入此输出流 此处即上传bytes.length() 个字节
 			out.write(bytes,0,c);
 			localreadybytes += c;
 			long nowProcess = localreadybytes / step;
@@ -253,8 +254,11 @@ public class ApacheFTPDirectory {
 	public static void main(String[] args){
 		ApacheFTPDirectory testFtp = new ApacheFTPDirectory();		
 		try{
+			long start = System.currentTimeMillis();
 			testFtp.connect("127.0.0.1", 990, "ftptest", "12456");
 			testFtp.processFile(new File("/text"));
+			long end = System.currentTimeMillis();
+			System.out.print("文件上传耗时： " + (end - start));
 		}catch(Exception e){
 			e.printStackTrace();
 		}

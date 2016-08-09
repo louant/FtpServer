@@ -36,7 +36,6 @@ public class ClientThread  extends Thread{
 		this.dir = F_DIR;
 	}
 	public static void main(String[] args){
-		run();
 	}
 	
 	
